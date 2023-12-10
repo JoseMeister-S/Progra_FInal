@@ -31,6 +31,7 @@
   [prim name args]
   [lazy arg body]
   [lazy-app arg body]
+  [prim-L body]
 ) 
 
 
@@ -84,6 +85,8 @@
     [(list 'if-tf c et ef) (if-tf (parse c) (parse et) (parse ef))]
     [(list 'with (list x e) b) (app (fun x (parse b)) (parse e))]
     [(list 'lazy (list x e) b) (lazy-app (fun x (parse b)) (parse e))]
+    [(list 'delay body) (prim-L body)]
+    [(list 'force (list t (cons prim-name args))) (prim prim-name (map parse args))]
     [(list 'fun arg-names body) (transform-fundef arg-names (parse body))] ; 1. Agregar el caso del fun
     [(list fun args) (match args
                        [(? number?) (app (parse fun) (parse args))]
@@ -116,12 +119,13 @@
 
 ; interp :: Expr  Env -> Val
 ; interpreta una expresion 
-(define (interp expr env) 
+(define (interp expr env)  
   (match expr
     [(num n) (valV n)]
     [(bool b) (valV b)]
     [(id x) (env-lookup x env)]; buscar el valor de x en env
     [(prim prim-name args) (prim-ops prim-name (map (λ (x) (promiseV x env (box #f))) args))]
+    [(prim-L body) (promiseV body env (box #f))]
     [(if-tf c et ef) (if (interp c env)
                          (interp et env)
                          (interp ef env))]
@@ -143,7 +147,7 @@
                               ;(interp e env) ; eager eval
                               fenv)
              )]
-))   
+))    
 
 ; prim-ops: op-name list[Val] -> Val
 (define (prim-ops op-name args)
@@ -151,7 +155,9 @@
     (valV (apply (cdr (assq op-name primitives)) vals))
     )
   )
-; (run '{{fun {a b} {+ a b}} 1 3})
+
+; prim-ops-L: op-name list[Val]-> Val
+
 
 
 
@@ -177,14 +183,19 @@
 (define (run prog)
   (let ([res (interp (parse prog) empty-env)])
     ; (interp res ...)
-    (match (strict res)
+    (if (promiseV? res)
+        res
+        (match (strict res)
       [(valV v) v]
       [(closureV arg body env) res]
-      [(promiseV e env (box #t)) (interp e env)])
+      [(promiseV e env (box #f)) (interp e env)])
+        )
       )
   )
 
-
+;Tests para 3
+(run '{delay {+ 1 1}})
+(run '{force {delay {+ 1 1}}})
 
 ;Tests para 5
 (run '{lazy {a {fun {f} {f 3}}} a})
