@@ -17,6 +17,14 @@
    (cons '- -)
    (cons '* *)
    (cons '/ /)
+   (cons '< <)
+   (cons '> >)
+   (cons '<= <=)
+   (cons '>= >=)
+   (cons '== =)
+   (cons '!= (λ (x y) (not (equal? x y))))
+   (cons '&& (λ (x y) (and x y)))
+   (cons '|| (λ (x y) (or x y)))
    ))
 
 
@@ -32,6 +40,7 @@
   [lazy arg body]
   [lazy-app arg body]
   [prim-L body]
+  [str s]
 ) 
 
 
@@ -75,6 +84,20 @@
       (app (transform-funapp fun (cdr args)) (car args)))
   )
 
+; concat-withs: Src -> Expr
+; concatena una cadena de with anidada
+;[(list 'with (list x e) b) (app (fun x (parse b)) (parse e))]
+(define (concat-withs vars body)
+  (match vars
+    [(list) (parse body)]
+    [(cons (list id expr) rest-vars)
+     (app (fun id (parse expr)) (concat-withs rest-vars body))
+     ;(with id (parse expr) (concat-withs rest-vars body)) 
+     ]
+     ; Vamos procesando la lista de definiciones com si fuera una lista comun
+    )
+  ) 
+
 ; parse: Src -> Expr
 ; parsea codigo fuente
 (define (parse src)
@@ -83,6 +106,12 @@
     [(? boolean?) (bool src)]
     [(? symbol?) (id src)]
     [(list 'if-tf c et ef) (if-tf (parse c) (parse et) (parse ef))]
+    [(list 'withN (cons head tail) body)
+     (app  (fun (car head)(if (empty? tail)
+                              (parse body)
+                              (parse (list 'withN tail body))))
+                (parse(cadr head))
+            )]
     [(list 'with (list x e) b) (app (fun x (parse b)) (parse e))]
     [(list 'lazy (list x e) b) (lazy-app (fun x (parse b)) (parse e))]
     [(list 'delay body) (prim-L body)]
@@ -123,6 +152,7 @@
   (match expr
     [(num n) (valV n)]
     [(bool b) (valV b)]
+    [(str s)(valV s)]
     [(id x) (env-lookup x env)]; buscar el valor de x en env
     [(prim prim-name args) (prim-ops prim-name (map (λ (x) (promiseV x env (box #f))) args))]
     [(prim-L body) (promiseV body env (box #f))]
@@ -243,10 +273,10 @@
 (test/exn (run '{with {x #t} {* x x x x}}) "type error")
 (test (run '{with {x 3} {+ x x}}) 6)
 (test (run '{with {x 3} {with {y 2} {+ x y}}}) 5)
-(test (run '{with {{x 3} {y 2}} {+ x y}}) 5)
-(test (run '{with {{x 3} {x 5}} {+ x x}}) 10)
-(test (run '{with {{x 3} {y {+ x 3}}} {+ x y}}) 9)
-(test (run '{with {{x 10} {y 2} {z 3}} {+ x {+ y z}}}) 15)
+(test (run '{withN {{x 3} {y 2}} {+ x y}}) 5)
+(test (run '{withN {{x 3} {x 5}} {+ x x}}) 10)
+(test (run '{withN {{x 3} {y {+ x 3}}} {+ x y}}) 9)
+(test (run '{withN {{x 10} {y 2} {z 3}} {+ x {+ y z}}}) 15)
 (test (run '{with {x 3} {if-tf {+ x 1} {+ x 3} {+ x 9}}}) 6)
 (test/exn (run '{f 10}) "undefined")
 (test (run '{with {f {fun {x} {+ x x}}}{f 10}}) 20)
