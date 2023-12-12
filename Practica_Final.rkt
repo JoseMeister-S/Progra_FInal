@@ -27,7 +27,7 @@
    (cons '|| (λ (x y) (or x y)))
    (cons 'append (λ (str1 str2) (string-append str1 str2)))
    (cons 'eq-str? (λ (str1 str2) (string=? str1 str2)))
-   (cons 'len (λ (x) (string-length x)))
+   (cons 'contains (λ (x y) (string-contains? x y)))
    ))
 
 
@@ -128,7 +128,7 @@
        ['eq-str? (if (andmap string? vals)
                      (void)
                      (error "type error"))]
-       ['len (if (andmap string? vals)
+       ['contains (if (andmap string? vals)
                      (void)
                      (error "type error"))]
        )]
@@ -154,6 +154,8 @@
                                       (parse(cadr head)))]
        )
      ]
+    [(list 'rec (list x e) b)
+     (parse `{with {,x {Y {fun {,x},e}}},b})]
       [(list 'withN (cons head tail) body) (app (fun (car head)(if (eq? tail null)
                               (parse body)
                               (parse (list 'withN tail body))))
@@ -164,7 +166,7 @@
            (match args
            [(list t (cons prim-name args)) (prim prim-name (map parse args))]
            [(cons prim-name args) (prim prim-name (map parse args))])]
-    [(list 'fun arg-names body) (transform-fundef arg-names (parse body))] 
+    [(list 'fun arg-names body) (transform-fundef arg-names (parse body))]
     [(list fun args) (match args
                        [(? number?) (app (parse fun) (parse args))]
                        [(? boolean?) (app (parse fun) (parse args))]
@@ -174,8 +176,6 @@
                                              (transform-funapp (parse fun) (reverse (map parse args))))]
                        )
      ]
-    [(list 'rec (list x e) b)
-     (parse `{with {,x {Y {fun {,x},e}}},b})]
     [(cons prim-name args) (prim prim-name (map parse args))]
     [(list arg e) (app (parse arg) (parse e))]
     )
@@ -193,7 +193,7 @@
 (deftype Val
   (valV v) ; numero, booleano, string, byte, etc.
   (closureV arg body env) ; closure = fun + env
-  (promiseV expr env cache) ; promise = expr-L + env + cache
+  (promiseV expr env) ; promise = expr-L + env + cache
   )
 
 ; interp :: Expr  Env -> Val
@@ -204,8 +204,8 @@
     [(bool b) (valV b)]
     [(str s)(valV s)] 
     [(id x) (env-lookup x env)]; buscar el valor de x en env
-    [(prim prim-name args) (prim-ops prim-name (map (λ (x) (promiseV x env (box #f))) args))]
-    [(prim-L body) (promiseV body env (box #f))]
+    [(prim prim-name args) (prim-ops prim-name (map (λ (x) (promiseV x env)) args))]
+    [(prim-L body) (promiseV body env)]
     [(if-tf c et ef) (if (interp c env)
                          (interp et env)
                          (interp ef env))]
@@ -222,7 +222,7 @@
      (def (closureV arg body fenv) (strict (interp f env))) ; Esto permite encontrar (fun 'x (add (id 'x) (id 'x))) por ejemplo y tomar arg y body
     
      (interp body (extend-env arg
-                              (promiseV e env (box #f)) ; lazy eval
+                              (promiseV e env) ; lazy eval
                               ;(interp e env) ; eager eval
                               fenv)
              )]
@@ -246,15 +246,7 @@
 ; destructor de promesas - cumplidor de promesas
 (define (strict val)
   (match val
-    [(promiseV e env cache)
-     (if (unbox cache)
-         (begin
-           (unbox cache)
-           )
-         (let ([interp-val (strict (interp e env))])
-           (begin (set-box! cache interp-val)
-                  interp-val))
-         )]
+    [(promiseV e env) (strict (interp e env))]
     [else val]
     )
   )
@@ -272,7 +264,7 @@
       (match (strict res)
       [(valV v) v]
       [(closureV arg body env) res]
-      [(promiseV e env (box #f)) (interp e env)]
+      [(promiseV e env) (interp e env)]
         )
         )
       )
@@ -283,7 +275,7 @@
 (test (run '{eq-str? "Hola" "Adios"}) #f)
 (test (run '{eq-str? "Hola" "Hola"}) #t)
 (test/exn (run '{eq-str? "Hola" 1}) "type error")
-(test (run '{len "Funcional"}) 9)
+(test (run '{contains "Funcional" "Fu"})#t)
 ;Tests para 3
 (run '{delay {+ 1 1}})
 (run '{force {delay {+ 1 1}}})
