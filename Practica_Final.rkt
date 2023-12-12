@@ -25,6 +25,9 @@
    (cons '!= (λ (x y) (not (equal? x y))))
    (cons '&& (λ (x y) (and x y)))
    (cons '|| (λ (x y) (or x y)))
+   (cons 'append (λ (str1 str2) (string-append str1 str2)))
+   (cons 'eq-str? (λ (str1 str2) (string=? str1 str2)))
+   (cons 'len (λ (x) (string-length x)))
    ))
 
 
@@ -40,7 +43,6 @@
   [lazy-app arg body]
   [prim-L body]
   [str s]
-  [lst args]
 ) 
 
 
@@ -89,6 +91,7 @@
   (match expr
     [(num n) (num)]
     [(bool b) (bool)]
+    [(str s) (str)]
     [(list name vals)
      (match name 
        ['+  (if (andmap number? vals)
@@ -119,6 +122,15 @@
        ['!= void]
        ['&& void]
        ['|| void]
+       ['append (if (andmap string? vals)
+                     (void)
+                     (error "type error"))]
+       ['eq-str? (if (andmap string? vals)
+                     (void)
+                     (error "type error"))]
+       ['len (if (andmap string? vals)
+                     (void)
+                     (error "type error"))]
        )]
     )
   )
@@ -130,8 +142,7 @@
     [(? number?) (num src)]
     [(? boolean?) (bool src)]
     [(? symbol?) (id src)]
-    [(? string?) (str src)]
-    [(? list?) (lst src)]
+    [(? string? s) (str s)]
     [(list 'if-tf c et ef) (if-tf (parse c) (parse et) (parse ef))]
     ;por alguna razon no funciona bien si no es con with N
     [(list 'with args body)
@@ -191,9 +202,8 @@
   (match expr
     [(num n) (valV n)]
     [(bool b) (valV b)]
-    [(str s)(valV s)]
+    [(str s)(valV s)] 
     [(id x) (env-lookup x env)]; buscar el valor de x en env
-    [(lst arg) (...)]
     [(prim prim-name args) (prim-ops prim-name (map (λ (x) (promiseV x env (box #f))) args))]
     [(prim-L body) (promiseV body env (box #f))]
     [(if-tf c et ef) (if (interp c env)
@@ -268,8 +278,12 @@
       )
   )
 ;Tests para 1
-
-
+(test (run '{append "Hola" "Adios"})"HolaAdios")
+(test/exn (run '{append "Hola" 1}) "type error")
+(test (run '{eq-str? "Hola" "Adios"}) #f)
+(test (run '{eq-str? "Hola" "Hola"}) #t)
+(test/exn (run '{eq-str? "Hola" 1}) "type error")
+(test (run '{len "Funcional"}) 9)
 ;Tests para 3
 (run '{delay {+ 1 1}})
 (run '{force {delay {+ 1 1}}})
