@@ -37,10 +37,10 @@
   [app fname arg-expr]                    ; (app <FAE> <FAE>) ; ahora podemos aplicar una funcion a otra
   [fun arg body]
   [prim name args]
-  [lazy arg body]
   [lazy-app arg body]
   [prim-L body]
   [str s]
+  [lst args]
 ) 
 
 
@@ -84,19 +84,44 @@
       (app (transform-funapp fun (cdr args)) (car args)))
   )
 
-; concat-withs: Src -> Expr
-; concatena una cadena de with anidada
-;[(list 'with (list x e) b) (app (fun x (parse b)) (parse e))]
-(define (concat-withs vars body)
-  (match vars
-    [(list) (parse body)]
-    [(cons (list id expr) rest-vars)
-     (app (fun id (parse expr)) (concat-withs rest-vars body))
-     ;(with id (parse expr) (concat-withs rest-vars body)) 
-     ]
-     ; Vamos procesando la lista de definiciones com si fuera una lista comun
+;typeof: expr -> type/error
+(define (typeof expr)
+  (match expr
+    [(num n) (num)]
+    [(bool b) (bool)]
+    [(list name vals)
+     (match name 
+       ['+  (if (andmap number? vals)
+                     (void)
+                     (error "type error"))]
+       ['- (if (andmap number? vals)
+                     (void)
+                     (error "type error"))]
+       ['* (if (andmap number? vals)
+                     (void)
+                     (error "type error"))]
+       ['/ (if (andmap number? vals)
+                     (void)
+                     (error "type error"))]
+       ['> (if (andmap number? vals)
+                     (void)
+                     (error "type error"))]
+       ['< (if (andmap number? vals)
+                     (void)
+                     (error "type error"))]
+       ['<= (if (andmap number? vals)
+                     (void)
+                     (error "type error"))]
+       ['>= (if (andmap number? vals)
+                     (void)
+                     (error "type error"))]
+       ['== void]
+       ['!= void]
+       ['&& void]
+       ['|| void]
+       )]
     )
-  ) 
+  )
 
 ; parse: Src -> Expr
 ; parsea codigo fuente
@@ -105,18 +130,30 @@
     [(? number?) (num src)]
     [(? boolean?) (bool src)]
     [(? symbol?) (id src)]
+    [(? string?) (str src)]
+    [(? list?) (lst src)]
     [(list 'if-tf c et ef) (if-tf (parse c) (parse et) (parse ef))]
-    [(list 'withN (cons head tail) body)
-     (app  (fun (car head)(if (empty? tail)
+    ;por alguna razon no funciona bien si no es con with N
+    [(list 'with args body)
+     (match args
+       [(list x e) (app (fun x (parse body)) (parse e))]
+       [(cons head tail) (app (fun (car head)(if (eq? tail null)
+                              (parse body)
+                              (parse (list 'with tail body))))
+                                      (parse(cadr head)))]
+       )
+     ]
+      [(list 'withN (cons head tail) body) (app (fun (car head)(if (eq? tail null)
                               (parse body)
                               (parse (list 'withN tail body))))
-                (parse(cadr head))
-            )]
-    [(list 'with (list x e) b) (app (fun x (parse b)) (parse e))]
+                                      (parse(cadr head)))]
     [(list 'lazy (list x e) b) (lazy-app (fun x (parse b)) (parse e))]
     [(list 'delay body) (prim-L body)]
-    [(list 'force (list t (cons prim-name args))) (prim prim-name (map parse args))]
-    [(list 'fun arg-names body) (transform-fundef arg-names (parse body))] ; 1. Agregar el caso del fun
+    [(list 'force args)
+           (match args
+           [(list t (cons prim-name args)) (prim prim-name (map parse args))]
+           [(cons prim-name args) (prim prim-name (map parse args))])]
+    [(list 'fun arg-names body) (transform-fundef arg-names (parse body))] 
     [(list fun args) (match args
                        [(? number?) (app (parse fun) (parse args))]
                        [(? boolean?) (app (parse fun) (parse args))]
@@ -126,8 +163,10 @@
                                              (transform-funapp (parse fun) (reverse (map parse args))))]
                        )
      ]
+    [(list 'rec (list x e) b)
+     (parse `{with {,x {Y {fun {,x},e}}},b})]
     [(cons prim-name args) (prim prim-name (map parse args))]
-    ;[(list arg e) (lazy-app (parse arg) (parse e))]; 2. Subir de nivel nuestras funciones
+    [(list arg e) (app (parse arg) (parse e))]
     )
   )
 
@@ -154,12 +193,12 @@
     [(bool b) (valV b)]
     [(str s)(valV s)]
     [(id x) (env-lookup x env)]; buscar el valor de x en env
+    [(lst arg) (...)]
     [(prim prim-name args) (prim-ops prim-name (map (λ (x) (promiseV x env (box #f))) args))]
     [(prim-L body) (promiseV body env (box #f))]
     [(if-tf c et ef) (if (interp c env)
                          (interp et env)
                          (interp ef env))]
-    [(lazy arg body) (closureV arg body env)]
     [(fun arg body) (closureV arg body env)] ; Por ahora, devolvemos la misma expresion que nos llego
     [(app f e)
      (def (closureV arg body fenv) (strict (interp f env))) ; Esto permite encontrar (fun 'x (add (id 'x) (id 'x))) por ejemplo y tomar arg y body
@@ -181,12 +220,14 @@
 
 ; prim-ops: op-name list[Val] -> Val
 (define (prim-ops op-name args)
-  (let ([vals (map (λ (x) (valV-v (strict x))) args)])
+  (let* ([vals (map (λ (x) (valV-v (strict x))) args)]
+        [t (typeof (list op-name vals))]
+        )
     (valV (apply (cdr (assq op-name primitives)) vals))
     )
   )
 
-; prim-ops-L: op-name list[Val]-> Val
+
 
 
 
@@ -208,25 +249,40 @@
     )
   )
 
+
 ; run: Src -> Src
 ; corre un programa
 (define (run prog)
-  (let ([res (interp (parse prog) empty-env)])
+  (let* ([rec-env (extend-env 'Y (interp (parse '{fun {f} {with {h {fun {g} {fun {n} {{f {g g}} n}}}} {h h}}})
+                                         empty-env) empty-env)]
+         [res (interp (parse prog) rec-env)])
     ; (interp res ...)
     (if (promiseV? res)
         res
-        (match (strict res)
+      (match (strict res)
       [(valV v) v]
       [(closureV arg body env) res]
-      [(promiseV e env (box #f)) (interp e env)])
+      [(promiseV e env (box #f)) (interp e env)]
+        )
         )
       )
   )
+;Tests para 1
+
 
 ;Tests para 3
 (run '{delay {+ 1 1}})
 (run '{force {delay {+ 1 1}}})
+(run '{force {+ 1 1}})
 
+;Tests para 4
+;deberia funcionar, DEBERIA
+(run '{rec {sum {fun {n}
+                        {if-tf {== 0 n} 0 {+ n {sum {- n 1}}}}}} {sum 0}})
+(run '{rec {sum {fun {n}
+                        {if-tf {== 0 n} 0 {+ n {sum {- n 1}}}}}} {sum 10}})
+
+ 
 ;Tests para 5
 (run '{lazy {a {fun {f} {f 3}}} a})
 (run '{with {a {fun {f} {f 3}}} a})
