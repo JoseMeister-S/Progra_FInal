@@ -154,9 +154,8 @@
                                       (parse(cadr head)))]
        )
      ]
-    [(list 'rec (list x e) b)
-     (parse `{with {,x {Y {fun {,x},e}}},b})]
-      [(list 'withN (cons head tail) body) (app (fun (car head)(if (eq? tail null)
+    [(list 'rec (list x e) b)(parse `{with {,x {Y {fun {,x} ,e}}} ,b})]
+    [(list 'withN (cons head tail) body) (app (fun (car head)(if (eq? tail null)
                               (parse body)
                               (parse (list 'withN tail body))))
                                       (parse(cadr head)))]
@@ -251,13 +250,13 @@
     )
   )
 
+(define (Y-combinator arg func enviroment)
+  (extend-env arg (interp func enviroment) enviroment))
 
 ; run: Src -> Src
 ; corre un programa
 (define (run prog)
-  (let* ([rec-env (extend-env 'Y (interp (parse '{fun {f} {with {h {fun {g} {fun {n} {{f {g g}} n}}}} {h h}}})
-                                         empty-env) empty-env)]
-         [res (interp (parse prog) rec-env)])
+  (let* ( [res (interp (parse prog) (Y-combinator 'Y (parse '{fun {f} {with {h {fun {g} {fun {n} {{f {g g}} n}}}} {h h}}}) empty-env))])
     ; (interp res ...)
     (if (promiseV? res)
         res
