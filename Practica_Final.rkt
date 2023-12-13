@@ -1,15 +1,6 @@
 #lang play
+;FAE-JN
 (print-only-errors #f) ; Para ver solo los errores.
-
-#|
-<FAE-L> ::=   <num> | <bool> | <id>
-            | (+ <FAE> <FAE>)
-            | (- <FAE> <FAE>)
-            | (if-tf <FAE> <FAE> <FAE>)
-            | (with <id> <FAE> <FAE>)
-            | (app <FAE> <FAE>) ; puedo aplicar una funcion a otra funcion / puedo usar una funcion como argumento. 
-            | (fun <id> <FAE>) ; fun(que es una lambda) nombre-arg body
-|#
 
 (define primitives
   (list
@@ -32,12 +23,11 @@
 
 
 (deftype Expr
-  [num n]                                 ; <num>
-  [bool b]                                ; <bool>
-  [if-tf c et ef]                         ; (if-tf <FAE> <FAE> <FAE>)
-; [with id-name named-expr body-expr]     ; (with <id> <FAE> <FAE>) "syntax sugar"
-  [id name]                               ; <id> 
-  [app fname arg-expr]                    ; (app <FAE> <FAE>) ; ahora podemos aplicar una funcion a otra
+  [num n]                                
+  [bool b]                                
+  [if-tf c et ef]                         
+  [id name]                                
+  [app fname arg-expr]                    
   [fun arg body]
   [prim name args]
   [lazy-app arg body]
@@ -46,10 +36,7 @@
 ) 
 
 
-#|
-<env> ::= (mtEnv)
-          | (aEnv <id> <val> <env>)
-|#
+
 (deftype Env
   (mtEnv)
   (aEnv id val env)
@@ -60,8 +47,8 @@
 
 ; extend-env:: <id> <val> <env> -> <env>
 (define extend-env aEnv)
+
 ; env-lookup :: <id> <env> -> <val>
-; buscar el valor de una variable dentro del ambiete
 (define (env-lookup x env)
   (match env
     [(mtEnv) (error "undefined: " x)]
@@ -76,7 +63,7 @@
       (fun (first arg-names) body)
       (fun (first arg-names) (transform-fundef (cdr arg-names) body)))
   )
-; (transform-fundef '{a b} (add (id 'a) (id 'b)))
+
 
 
 ; transform-funapp
@@ -192,7 +179,7 @@
 (deftype Val
   (valV v) ; numero, booleano, string, byte, etc.
   (closureV arg body env) ; closure = fun + env
-  (promiseV expr env) ; promise = expr-L + env + cache
+  (promiseV expr env) ; promise = expr-L + env
   )
 
 ; interp :: Expr  Env -> Val
@@ -202,27 +189,23 @@
     [(num n) (valV n)]
     [(bool b) (valV b)]
     [(str s)(valV s)] 
-    [(id x) (env-lookup x env)]; buscar el valor de x en env
+    [(id x) (env-lookup x env)]
     [(prim prim-name args) (prim-ops prim-name (map (λ (x) (promiseV x env)) args))]
     [(prim-L body) (promiseV body env)]
     [(if-tf c et ef) (if (interp c env)
                          (interp et env)
                          (interp ef env))]
-    [(fun arg body) (closureV arg body env)] ; Por ahora, devolvemos la misma expresion que nos llego
+    [(fun arg body) (closureV arg body env)]
     [(app f e)
-     (def (closureV arg body fenv) (strict (interp f env))) ; Esto permite encontrar (fun 'x (add (id 'x) (id 'x))) por ejemplo y tomar arg y body
-    
+     (def (closureV arg body fenv) (strict (interp f env))) 
      (interp body (extend-env arg
-                              ;(promiseV e env (box #f)) ; lazy eval
-                              (interp e env) ; eager eval
-                              fenv)) ; parece que no funciona ni con estatico ni dinamico
+                              (interp e env) 
+                              fenv))
      ]
      [(lazy-app f e)
-     (def (closureV arg body fenv) (strict (interp f env))) ; Esto permite encontrar (fun 'x (add (id 'x) (id 'x))) por ejemplo y tomar arg y body
-    
+     (def (closureV arg body fenv) (strict (interp f env)))
      (interp body (extend-env arg
-                              (promiseV e env) ; lazy eval
-                              ;(interp e env) ; eager eval
+                              (promiseV e env) 
                               fenv)
              )]
 ))    
@@ -235,9 +218,6 @@
     (valV (apply (cdr (assq op-name primitives)) vals))
     )
   )
-
-
-
 
 
 
